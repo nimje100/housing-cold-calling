@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-
 import ActiveCallDetail from "./components/ActiveCallDetail";
 import Button from "./components/base/Button";
 import Vapi from "@vapi-ai/web";
@@ -15,22 +14,26 @@ const App = () => {
   const [assistantIsSpeaking, setAssistantIsSpeaking] = useState(false);
   const [volumeLevel, setVolumeLevel] = useState(0);
 
-  const { showPublicKeyInvalidMessage, setShowPublicKeyInvalidMessage } = usePublicKeyInvalid();
+  const [error, setError] = useState(null);
 
   // hook into Vapi events
   useEffect(() => {
+    // Check if audio is available
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      setError("Audio is not supported in this environment");
+      return;
+    }
+
     vapi.on("call-start", () => {
       setConnecting(false);
       setConnected(true);
 
-      setShowPublicKeyInvalidMessage(false);
     });
 
     vapi.on("call-end", () => {
       setConnecting(false);
       setConnected(false);
 
-      setShowPublicKeyInvalidMessage(false);
     });
 
     vapi.on("speech-start", () => {
@@ -47,22 +50,28 @@ const App = () => {
 
     vapi.on("error", (error) => {
       console.error(error);
-
+      setError(error.message || "An error occurred");
       setConnecting(false);
-      if (isPublicKeyMissingError({ vapiError: error })) {
-        setShowPublicKeyInvalidMessage(true);
-      }
     });
 
     // we only want this to fire on mount
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // call start handler
-  const startCallInline = () => {
+  const startCallInline = async () => {
     setConnecting(true);
-    vapi.start("deaa8946-9c01-4a8c-a917-0243d2af3bc2");
+    setError(null);
+    try {
+      // Check if we can access the microphone
+      await navigator.mediaDevices.getUserMedia({ audio: true });
+      vapi.start("deaa8946-9c01-4a8c-a917-0243d2af3bc2");
+    } catch (err) {
+      console.error(err);
+      setError("Failed to access microphone. Please check your audio settings.");
+      setConnecting(false);
+    }
   };
+
   const endCall = () => {
     vapi.stop();
   };
@@ -77,11 +86,13 @@ const App = () => {
         alignItems: "center",
       }}
     >
+      {error && <div style={{ color: 'red', marginBottom: '10px' }}>{error}</div>}
       {!connected ? (
         <Button
           label="Call"
           onClick={startCallInline}
           isLoading={connecting}
+          disabled={!!error}
         />
       ) : (
         <ActiveCallDetail
@@ -92,24 +103,6 @@ const App = () => {
       )}
     </div>
   );
-};
-
-const usePublicKeyInvalid = () => {
-  const [showPublicKeyInvalidMessage, setShowPublicKeyInvalidMessage] = useState(false);
-
-  // close public key invalid message after delay
-  useEffect(() => {
-    if (showPublicKeyInvalidMessage) {
-      setTimeout(() => {
-        setShowPublicKeyInvalidMessage(false);
-      }, 3000);
-    }
-  }, [showPublicKeyInvalidMessage]);
-
-  return {
-    showPublicKeyInvalidMessage,
-    setShowPublicKeyInvalidMessage,
-  };
 };
 
 export default App;
